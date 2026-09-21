@@ -1,0 +1,32 @@
+# Python build and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime state and ephemeral data
+runtime/
+runs/
+/capture_*.png
+/display_state.json
+
+# Secrets and environment files
+.env*
+credentials*.json
+token*.json
+*.pem
+*.key
+*.pfx
+id_rsa*
+id_ed25519*
+
+# OS metadata
+.DS_Store
+Thumbs.db
