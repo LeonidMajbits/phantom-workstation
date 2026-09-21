@@ -33,20 +33,23 @@ def _estimate_tokens(obj: Any) -> int:
         return max(1, len(str(obj)) // 4)
 
 
+def _canonicalize_value(val: Any) -> Any:
+    """Recursively canonicalizes nested state structures, preserving types and deterministic key order."""
+    if val is None or isinstance(val, (bool, int, float, str)):
+        return val
+    if isinstance(val, (list, tuple)):
+        return [_canonicalize_value(item) for item in val]
+    if isinstance(val, dict):
+        return {str(k): _canonicalize_value(v) for k, v in sorted(val.items())}
+    return str(val)
+
+
 def extract_node_state(node: Dict[str, Any]) -> Dict[str, Any]:
-    """Extracts a canonical dictionary of comparable Accessibility state properties."""
+    """Extracts a canonical dictionary of defined Accessibility state properties."""
     state: Dict[str, Any] = {}
     for k in STATE_KEYS:
         if k in node:
-            val = node[k]
-            if isinstance(val, (str, int, float, bool)) or val is None:
-                state[k] = val
-            elif isinstance(val, dict):
-                state[k] = {str(dk): str(dv) for dk, dv in sorted(val.items())}
-            elif isinstance(val, list):
-                state[k] = [str(item) for item in val]
-            else:
-                state[k] = str(val)
+            state[k] = _canonicalize_value(node[k])
     return state
 
 

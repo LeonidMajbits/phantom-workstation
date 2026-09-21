@@ -17,7 +17,7 @@ Modern AI computer-use systems face two core challenges when interacting with de
 
 **Phantom Workstation** provides lightweight, native macOS primitives to address these challenges:
 * **Headless Virtual Display**: Spawns an isolated 1920x1080 display space in RAM using CoreGraphics (`CGVirtualDisplay`). Windows can be placed and screenshotted offscreen without disrupting the primary monitor.
-* **AX Tree Delta Compressor**: Computes structural and attribute differences across consecutive UI trees. Tracks full accessibility state (`enabled`, `focused`, `selected`, `expanded`, `hidden`, `subrole`, etc.), escapes path segments to prevent hierarchy collisions, and calculates exact token savings.
+* **AX Tree Delta Compressor**: Computes structural and attribute differences across consecutive UI trees. Tracks common agent-relevant accessibility attributes (`enabled`, `focused`, `selected`, `expanded`, `hidden`, `subrole`, etc.), escapes path segments to prevent hierarchy collisions, and reports heuristic token-size estimates for raw and delta payloads.
 
 ---
 
@@ -138,11 +138,11 @@ print(f"Detailed changes: {diff['mutations']['modified'][0]['changes']}")
 
 ## Architectural & Security Design
 
+* **Fail-Closed Display Isolation**: When capturing the virtual display, the CoreGraphics display ID is mapped to macOS `screencapture -D` 1-based display ordinals. If the ordinal cannot be resolved, capture fails closed with a structured error, never silently falling back to the user's primary monitor.
 * **Safe AppleScript Parameterization**: Window movement parameters are passed as positional arguments (`on run argv`) via `osascript`, preventing script interpreter injection.
-* **Display Ordinal Resolution**: Resolves the CoreGraphics display ID to the 1-based display ordinal expected by macOS `screencapture -D` using CoreGraphics display list queries.
-* **Robust Diff Tracking**: Compares and emits deltas for `role`, `subrole`, `name`, `title`, `value`, `enabled`, `focused`, `selected`, `expanded`, `hidden`, `checked`, `frame`, and `help`.
-* **Collision-Resistant Pathing**: Encodes path segments using standard percent-encoding, preventing path depth injection and sibling disambiguation collisions.
-* **Unmasked Token Accounting**: Accurately measures serialized payload sizes without masking negative compression ratios, flagging `exceeded_raw` when a patch is larger than the raw tree.
+* **Defined AX Attribute Tracking**: Compares and emits deltas for `role`, `subrole`, `name`, `title`, `value`, `enabled`, `focused`, `selected`, `expanded`, `hidden`, `checked`, `frame`, and `help`. Nested structures are canonicalized with deterministic key ordering and type preservation.
+* **Collision-Resistant Pathing & Sibling Limits**: Encodes path segments using standard percent-encoding, preventing path depth injection and sibling disambiguation collisions. For indistinguishable sibling nodes without stable system identifiers, fallback occurrence numbering (`/item`, `/item#2`) is used; identity stability under sibling reordering or deletion is best-effort.
+* **Unmasked Token Accounting**: Reports heuristic token-size estimates (`len // 4`) for raw and patch payloads without masking negative compression ratios, flagging `exceeded_raw` when a patch is larger than the raw tree.
 * **Process Concurrency & Cache Invalidation**: Daemon startup and teardown use advisory file locks. The native binary automatically recompiles when the Objective-C source file is modified.
 
 ---

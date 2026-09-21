@@ -6,7 +6,7 @@ _SRC_DIR = pathlib.Path(__file__).resolve().parent.parent / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from phantom_workstation.ax_diff import compute_ax_diff, compute_node_hash, flatten_tree
+from phantom_workstation.ax_diff import compute_ax_diff, compute_node_hash, extract_node_state, flatten_tree
 
 
 class TestAXDiff(unittest.TestCase):
@@ -189,6 +189,58 @@ class TestAXDiff(unittest.TestCase):
         res = compute_ax_diff(None, node)
         self.assertEqual(res["mode"], "full_initial")
         self.assertEqual(res["added_count"], 1)
+
+    def test_canonicalize_nested_dict_key_ordering(self):
+        # Different dictionary key orders must produce identical canonical states, identical hashes, and 0 mutations
+        n1 = {
+            "role": "AXWindow",
+            "name": "Win",
+            "frame": {"y": 20, "x": 10, "h": 200, "w": 300},
+            "value": {"b": 2, "a": 1},
+        }
+        n2 = {
+            "role": "AXWindow",
+            "name": "Win",
+            "frame": {"x": 10, "w": 300, "y": 20, "h": 200},
+            "value": {"a": 1, "b": 2},
+        }
+        self.assertEqual(compute_node_hash(n1), compute_node_hash(n2))
+        res = compute_ax_diff(n1, n2)
+        self.assertEqual(res["modified_count"], 0)
+        self.assertEqual(res["added_count"], 0)
+        self.assertEqual(res["removed_count"], 0)
+
+    def test_canonicalize_preserves_nested_scalar_types(self):
+        # int, bool, float, None in nested structures must preserve exact Python types
+        node = {
+            "role": "AXButton",
+            "name": "Btn",
+            "frame": {"x": 10, "ratio": 1.5, "active": True, "tag": None},
+        }
+        state = extract_node_state(node)
+        self.assertIsInstance(state["frame"]["x"], int)
+        self.assertIsInstance(state["frame"]["ratio"], float)
+        self.assertIs(state["frame"]["active"], True)
+        self.assertIsNone(state["frame"]["tag"])
+
+    def test_canonicalize_detects_nested_state_changes(self):
+        # Changed nested property must trigger a modification and emit granular changes
+        t1 = {
+            "role": "AXWindow",
+            "name": "Win",
+            "frame": {"x": 10, "y": 20},
+        }
+        t2 = {
+            "role": "AXWindow",
+            "name": "Win",
+            "frame": {"x": 10, "y": 25},
+        }
+        res = compute_ax_diff(t1, t2)
+        self.assertEqual(res["modified_count"], 1)
+        mod = res["mutations"]["modified"][0]
+        self.assertIn("frame", mod["changes"])
+        self.assertEqual(mod["changes"]["frame"]["old"], {"x": 10, "y": 20})
+        self.assertEqual(mod["changes"]["frame"]["new"], {"x": 10, "y": 25})
 
 
 if __name__ == "__main__":

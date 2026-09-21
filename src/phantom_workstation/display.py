@@ -78,6 +78,14 @@ def ensure_compiled() -> bool:
         except Exception:
             pass
 
+    # Check if clang is available before attempting compilation
+    if not shutil.which("clang"):
+        print(
+            "[ERROR] clang was not found. Install Xcode Command Line Tools with: xcode-select --install",
+            file=sys.stderr,
+        )
+        return False
+
     ensure_paths()
     cmd = [
         "clang",
@@ -90,10 +98,17 @@ def ensure_compiled() -> bool:
         str(source_path),
         "-o", str(BIN_PATH),
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if res.returncode != 0 and res.stderr:
-        print(f"[ERROR] Failed to compile phantom_display: {res.stderr.strip()}", file=sys.stderr)
-    return res.returncode == 0
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0 and res.stderr:
+            print(f"[ERROR] Failed to compile phantom_display: {res.stderr.strip()}", file=sys.stderr)
+        return res.returncode == 0
+    except FileNotFoundError:
+        print(
+            "[ERROR] clang was not found. Install Xcode Command Line Tools with: xcode-select --install",
+            file=sys.stderr,
+        )
+        return False
 
 
 def is_pid_alive(pid: int) -> bool:
@@ -252,8 +267,13 @@ def capture_display(output_path: Optional[pathlib.Path] = None) -> Dict[str, Any
     if not display_ordinal:
         display_ordinal = resolve_display_ordinal(int(did))
 
+    # Fail closed: never silently capture primary monitor if virtual display ordinal cannot be resolved
     if not display_ordinal:
-        display_ordinal = 1
+        return {
+            "ok": False,
+            "error": f"Could not resolve 1-based display ordinal for CG display ID {did}",
+            "display_id": did,
+        }
 
     if output_path is None:
         ensure_paths()
