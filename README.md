@@ -1,5 +1,7 @@
 # Phantom Workstation
 
+> **An open-source systems project led by Leonid Majbits and developed through Gemini Operator Lab with AI-assisted engineering.**
+
 [![CI](https://github.com/LeonidMajbits/phantom-workstation/actions/workflows/ci.yml/badge.svg)](https://github.com/LeonidMajbits/phantom-workstation/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg)](README.md)
