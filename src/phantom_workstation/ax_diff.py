@@ -60,6 +60,41 @@ def compute_node_hash(node: Dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
 
 
+_MISSING = object()
+
+
+def _values_differ(v1: Any, v2: Any) -> bool:
+    """Checks whether two canonical values differ, taking into account scalar types
+    (bool vs int/float, int vs float) and presence (_MISSING vs None).
+    """
+    if v1 is _MISSING or v2 is _MISSING:
+        return v1 is not v2
+    if v1 is None or v2 is None:
+        return v1 is not v2
+    # In Python, bool is a subclass of int (True == 1, False == 0).
+    # We must treat bool vs non-bool as different.
+    if isinstance(v1, bool) or isinstance(v2, bool):
+        if type(v1) is not type(v2):
+            return True
+        return v1 != v2
+    # Distinguish int vs float (e.g., 1 vs 1.0)
+    if (isinstance(v1, int) and isinstance(v2, float)) or (isinstance(v1, float) and isinstance(v2, int)):
+        return True
+    if isinstance(v1, (list, tuple)) and isinstance(v2, (list, tuple)):
+        if len(v1) != len(v2):
+            return True
+        return any(_values_differ(x1, x2) for x1, x2 in zip(v1, v2))
+    if isinstance(v1, (list, tuple)) or isinstance(v2, (list, tuple)):
+        return True
+    if isinstance(v1, dict) and isinstance(v2, dict):
+        if set(v1.keys()) != set(v2.keys()):
+            return True
+        return any(_values_differ(v1[k], v2[k]) for k in v1)
+    if isinstance(v1, dict) or isinstance(v2, dict):
+        return True
+    return v1 != v2
+
+
 def _escape_path_component(component: str) -> str:
     """Escapes special characters in a path segment, preventing hierarchy and delimiter collisions."""
     # Preserves ':' for standard role:name readability while escaping '/' and '#'
@@ -182,10 +217,24 @@ def compute_ax_diff(prev_tree: Optional[Dict[str, Any]], curr_tree: Optional[Dic
             all_keys = set(prev_state.keys()) | set(curr_state.keys())
             changes: Dict[str, Dict[str, Any]] = {}
             for k in sorted(all_keys):
-                v_prev = prev_state.get(k)
-                v_curr = curr_state.get(k)
-                if v_prev != v_curr:
-                    changes[k] = {"old": v_prev, "new": v_curr}
+                v_prev = prev_state.get(k, _MISSING)
+                v_curr = curr_state.get(k, _MISSING)
+                if _values_differ(v_prev, v_curr):
+                    change_item: Dict[str, Any] = {
+                        "old": None if v_prev is _MISSING else v_prev,
+                        "new": None if v_curr is _MISSING else v_curr,
+                    }
+                    if v_prev is _MISSING:
+                        change_item["old_present"] = False
+                    if v_curr is _MISSING:
+                        change_item["new_present"] = False
+                    changes[k] = change_item
+
+            if not changes:
+                changes["_state_mutation"] = {
+                    "old": n_prev.get("_hash"),
+                    "new": n_curr.get("_hash"),
+                }
 
             modified_nodes.append({
                 "path": p,

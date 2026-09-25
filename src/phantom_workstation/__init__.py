@@ -4,7 +4,7 @@ Provides lightweight native macOS utilities for managing offscreen virtual displ
 and token-efficient Accessibility tree delta compression for local agent development.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "The Phantom Workstation Authors"
 
 from .ax_diff import compute_ax_diff, flatten_tree

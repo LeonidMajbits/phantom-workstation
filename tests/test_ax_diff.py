@@ -242,6 +242,29 @@ class TestAXDiff(unittest.TestCase):
         self.assertEqual(mod["changes"]["frame"]["old"], {"x": 10, "y": 20})
         self.assertEqual(mod["changes"]["frame"]["new"], {"x": 10, "y": 25})
 
+    def test_typed_and_presence_mutations(self):
+        # 1. Typed bool vs int change
+        n1 = {"role": "AXButton", "identifier": "btn", "selected": True}
+        n2 = {"role": "AXButton", "identifier": "btn", "selected": 1}
+        res = compute_ax_diff(n1, n2)
+        self.assertEqual(res["modified_count"], 1)
+        self.assertIn("selected", res["mutations"]["modified"][0]["changes"])
+        self.assertEqual(res["mutations"]["modified"][0]["changes"]["selected"], {"old": True, "new": 1})
+
+        # 2. Explicit null presence change
+        n3 = {"role": "AXButton", "identifier": "btn"}
+        n4 = {"role": "AXButton", "identifier": "btn", "help": None}
+        res_null = compute_ax_diff(n3, n4)
+        self.assertEqual(res_null["modified_count"], 1)
+        self.assertIn("help", res_null["mutations"]["modified"][0]["changes"])
+
+        # 3. Nested int vs float change
+        n5 = {"role": "AXButton", "identifier": "btn", "frame": {"x": 1}}
+        n6 = {"role": "AXButton", "identifier": "btn", "frame": {"x": 1.0}}
+        res_float = compute_ax_diff(n5, n6)
+        self.assertEqual(res_float["modified_count"], 1)
+        self.assertIn("frame", res_float["mutations"]["modified"][0]["changes"])
+
 
 if __name__ == "__main__":
     unittest.main()

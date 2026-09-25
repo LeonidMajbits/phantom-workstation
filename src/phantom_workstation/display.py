@@ -6,6 +6,7 @@ import contextlib
 import ctypes
 import datetime
 import fcntl
+import hashlib
 import json
 import os
 import pathlib
@@ -70,10 +71,17 @@ def ensure_compiled() -> bool:
     if not source_path or not source_path.exists():
         return False
 
-    # Invalidate cached binary if source file is newer
-    if BIN_PATH.exists() and os.access(BIN_PATH, os.X_OK):
+    hash_path = BIN_PATH.with_suffix(".sha256")
+    try:
+        source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    except Exception:
+        source_hash = ""
+
+    # Invalidate cached binary if missing, unexecutable, or source hash does not match
+    if BIN_PATH.exists() and os.access(BIN_PATH, os.X_OK) and hash_path.exists():
         try:
-            if BIN_PATH.stat().st_mtime >= source_path.stat().st_mtime:
+            cached_hash = hash_path.read_text(encoding="utf-8").strip()
+            if cached_hash and cached_hash == source_hash:
                 return True
         except Exception:
             pass
@@ -102,7 +110,15 @@ def ensure_compiled() -> bool:
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode != 0 and res.stderr:
             print(f"[ERROR] Failed to compile phantom_display: {res.stderr.strip()}", file=sys.stderr)
-        return res.returncode == 0
+        if res.returncode == 0:
+            try:
+                BIN_PATH.chmod(0o755)
+                if source_hash:
+                    hash_path.write_text(source_hash, encoding="utf-8")
+            except Exception:
+                pass
+            return True
+        return False
     except FileNotFoundError:
         print(
             "[ERROR] clang was not found. Install Xcode Command Line Tools with: xcode-select --install",
@@ -130,8 +146,9 @@ def is_pid_alive(pid: int) -> bool:
         if "Z" in stat:
             return False
 
-        # Guard against PID reuse: ensure command name contains phantom_display
-        if "phantom_display" not in comm:
+        # Guard against PID reuse: ensure command basename matches phantom_display exactly
+        comm_base = pathlib.Path(comm.strip()).name
+        if comm_base != "phantom_display":
             return False
 
         return True
@@ -144,21 +161,26 @@ def resolve_display_ordinal(display_id: int) -> Optional[int]:
     try:
         cg = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
         count = ctypes.c_uint32(0)
-        cg.CGGetActiveDisplayList(0, None, ctypes.byref(count))
-        if count.value == 0:
+        err1 = cg.CGGetActiveDisplayList(0, None, ctypes.byref(count))
+        if err1 != 0 or count.value == 0:
             return None
-        display_ids = (ctypes.c_uint32 * count.value)()
-        cg.CGGetActiveDisplayList(count.value, display_ids, ctypes.byref(count))
-        for idx, did in enumerate(display_ids, 1):
-            if did == display_id:
-                return idx
+        max_displays = count.value
+        display_ids = (ctypes.c_uint32 * max_displays)()
+        active_count = ctypes.c_uint32(0)
+        err2 = cg.CGGetActiveDisplayList(max_displays, display_ids, ctypes.byref(active_count))
+        if err2 != 0:
+            return None
+        valid_count = min(active_count.value, max_displays)
+        for idx in range(valid_count):
+            if display_ids[idx] == display_id:
+                return idx + 1
     except Exception:
         pass
     return None
 
 
 def get_display_status() -> Dict[str, Any]:
-    """Retrieves current virtual display runtime status."""
+    """Retrieves current virtual display runtime status non-destructively."""
     if not STATE_PATH.exists():
         return {"active": False, "status": "offline"}
 
@@ -166,14 +188,12 @@ def get_display_status() -> Dict[str, Any]:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         pid = data.get("pid")
-        if pid:
-            if is_pid_alive(int(pid)):
-                data["active"] = True
-                data["status"] = "online"
-                return data
-            else:
-                STATE_PATH.unlink(missing_ok=True)
-                return {"active": False, "status": "stale_cleaned"}
+        if pid and is_pid_alive(int(pid)):
+            data["active"] = True
+            data["status"] = "online"
+            return data
+        else:
+            return {"active": False, "status": "offline"}
     except Exception:
         pass
     return {"active": False, "status": "offline"}
@@ -186,6 +206,9 @@ def start_display(width: int = 1920, height: int = 1080) -> Dict[str, Any]:
         status = get_display_status()
         if status.get("active"):
             return {"ok": True, "already_running": True, "details": status}
+
+        # Stale state is safely unlinked under lifecycle lock before starting new daemon
+        STATE_PATH.unlink(missing_ok=True)
 
         if not ensure_compiled():
             return {"ok": False, "error": "Failed to compile phantom_display binary"}
@@ -262,13 +285,12 @@ def capture_display(output_path: Optional[pathlib.Path] = None) -> Dict[str, Any
     if not did:
         return {"ok": False, "error": "No display ID found"}
 
-    # Resolve 1-based display ordinal for screencapture -D
-    display_ordinal = st.get("display_index")
-    if not display_ordinal:
-        display_ordinal = resolve_display_ordinal(int(did))
+    # Always dynamically resolve the live 1-based display ordinal for screencapture -D.
+    # Never trust a stale cached display_index or fall back to primary display 1.
+    display_ordinal = resolve_display_ordinal(int(did))
 
     # Fail closed: never silently capture primary monitor if virtual display ordinal cannot be resolved
-    if not display_ordinal:
+    if not display_ordinal or display_ordinal <= 0:
         return {
             "ok": False,
             "error": f"Could not resolve 1-based display ordinal for CG display ID {did}",

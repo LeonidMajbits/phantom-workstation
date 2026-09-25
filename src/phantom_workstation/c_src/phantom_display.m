@@ -103,16 +103,19 @@ int run_daemon(uint32_t width, uint32_t height) {
     CGRect bounds = CGDisplayBounds(did);
 
     uint32_t activeCount = 0;
-    CGGetActiveDisplayList(0, NULL, &activeCount);
-    int displayIndex = 1;
-    if (activeCount > 0) {
+    CGDisplayErr err1 = CGGetActiveDisplayList(0, NULL, &activeCount);
+    int displayIndex = 0;
+    if (err1 == kCGErrorSuccess && activeCount > 0) {
         CGDirectDisplayID *displays = (CGDirectDisplayID *)malloc(sizeof(CGDirectDisplayID) * activeCount);
         if (displays) {
-            CGGetActiveDisplayList(activeCount, displays, &activeCount);
-            for (uint32_t i = 0; i < activeCount; i++) {
-                if (displays[i] == did) {
-                    displayIndex = (int)(i + 1);
-                    break;
+            uint32_t returnedCount = 0;
+            CGDisplayErr err2 = CGGetActiveDisplayList(activeCount, displays, &returnedCount);
+            if (err2 == kCGErrorSuccess) {
+                for (uint32_t i = 0; i < returnedCount && i < activeCount; i++) {
+                    if (displays[i] == did) {
+                        displayIndex = (int)(i + 1);
+                        break;
+                    }
                 }
             }
             free(displays);
@@ -122,7 +125,7 @@ int run_daemon(uint32_t width, uint32_t height) {
     NSDictionary *state = @{
         @"active": @YES,
         @"display_id": @(did),
-        @"display_index": @(displayIndex),
+        @"display_index": (displayIndex > 0) ? (id)@(displayIndex) : (id)[NSNull null],
         @"width": @(bounds.size.width),
         @"height": @(bounds.size.height),
         @"origin_x": @(bounds.origin.x),

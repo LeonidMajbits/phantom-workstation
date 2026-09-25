@@ -170,7 +170,7 @@ Please report vulnerabilities confidentially via GitHub Security Advisories. See
 
 ## Authorship and License
 
-Authorship and AI-assisted development are documented in [`AUTHORS.md`](AUTHORS.md).
+Authorship, provenance, and distribution boundaries are documented in [`NOTICE.md`](NOTICE.md) and [`AUTHORS.md`](AUTHORS.md).
 
 Copyright 2026 Leonid Majbits.
 

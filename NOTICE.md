@@ -20,4 +20,4 @@ Claims are scoped to the source revision, workload, platform, and evidence class
 
 * **Architectural Lineage**: Phantom Workstation decouples autonomous agent vision and desktop actuation from the user's primary display via private macOS CoreGraphics `CGVirtualDisplay` spaces, paired with a token-efficient Accessibility (AX) structural difference engine.
 * **Licensing**: Distributed under the MIT license in `LICENSE`. Copyright (c) 2026 Leonid Majbits.
-* **Zero Vendoring**: The core display daemon and AX delta compressor are authored natively using Apple CoreGraphics and Python 3 standard/PyObjC bindings. No external commercial agent frameworks are vendored.
+* **Zero Vendoring**: The core display daemon and AX delta compressor are authored natively using Apple CoreGraphics and Python 3 standard library / ctypes bindings. No external commercial agent frameworks are vendored.
